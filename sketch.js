@@ -7,9 +7,11 @@ let computerGesture = "等待中";
 let gameResult = "模型載入中...";
 let gestures = ["石頭", "布", "剪刀"];
 let lastPlayTime = 0;
-let gameState = "WAITING"; // 狀態：WAITING (等待開始), PLAYING (遊戲進行中)
+let gameState = "WAITING"; // 狀態：WAITING (等待開始), PLAYING (遊戲進行中), RESULT (顯示結果)
 let playerScore = 0; // 玩家得分
 let computerScore = 0; // 電腦得分
+let currentGesture = ""; // 紀錄當前手勢，用來判斷是否維持
+let gestureStartTime = 0; // 紀錄當前手勢開始維持的時間
 
 function setup() {
   // 建立全螢幕畫布
@@ -67,10 +69,23 @@ function draw() {
     // 繪製手部節點與遊戲邏輯
     drawKeypoints(imgWidth, imgHeight);
     
+    // 檢查手勢是否改變，若改變則重置計時器
+    if (playerGesture !== currentGesture) {
+      currentGesture = playerGesture;
+      gestureStartTime = millis();
+    }
+
     if (gameState === "WAITING") {
       checkStartGame();
-    } else {
+    } else if (gameState === "PLAYING") {
       playGame();
+    } else if (gameState === "RESULT") {
+      // 顯示結果 2 秒後重置為 PLAYING 狀態
+      if (millis() - lastPlayTime > 2000) {
+        gameState = "PLAYING";
+        gameResult = "請對著鏡頭比出 剪刀、石頭 或 布";
+        gestureStartTime = millis();
+      }
     }
     drawGameUI();
   }
@@ -88,9 +103,35 @@ function drawKeypoints(imgWidth, imgHeight) {
   let scaleX = imgWidth / capture.width;
   let scaleY = imgHeight / capture.height;
 
+  // 定義手部骨架的連接關係
+  let connections = [
+    // 大拇指
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    // 食指
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    // 中指
+    [0, 9], [9, 10], [10, 11], [11, 12],
+    // 無名指
+    [0, 13], [13, 14], [14, 15], [15, 16],
+    // 小指
+    [0, 17], [17, 18], [18, 19], [19, 20]
+  ];
+
   for (let i = 0; i < predictions.length; i++) {
     let prediction = predictions[i];
     playerGesture = detectGesture(prediction);
+
+    // 繪製骨架線條
+    stroke(0, 255, 0); // 綠色線條
+    strokeWeight(2);
+    for (let k = 0; k < connections.length; k++) {
+      let ptA = prediction.landmarks[connections[k][0]];
+      let ptB = prediction.landmarks[connections[k][1]];
+      line(
+        startX + ptA[0] * scaleX, startY + ptA[1] * scaleY,
+        startX + ptB[0] * scaleX, startY + ptB[1] * scaleY
+      );
+    }
 
     for (let j = 0; j < prediction.landmarks.length; j++) {
       let keypoint = prediction.landmarks[j];
@@ -136,25 +177,33 @@ function detectGesture(prediction) {
 }
 
 function checkStartGame() {
-  if (playerGesture === "OK") {
-    gameState = "PLAYING";
-    lastPlayTime = millis();
-    gameResult = "遊戲開始！";
+  if (currentGesture === "OK") {
+    if (millis() - gestureStartTime > 3000) {
+      gameState = "PLAYING";
+      gestureStartTime = millis();
+      gameResult = "遊戲開始！";
+    } else {
+      gameResult = "請維持 OK 手勢";
+    }
+  } else {
+    gameResult = "請比出 OK 手勢開始";
   }
 }
 
 function playGame() {
-  // 每 3 秒結算一次電腦猜拳結果
-  if (millis() - lastPlayTime > 3000) {
-    if (playerGesture === "石頭" || playerGesture === "剪刀" || playerGesture === "布") {
+  // 當手勢是剪刀、石頭或布時，維持 3 秒才結算
+  if (currentGesture === "石頭" || currentGesture === "剪刀" || currentGesture === "布") {
+    if (millis() - gestureStartTime > 3000) {
       computerGesture = random(gestures);
+      gameState = "RESULT";
+      lastPlayTime = millis();
       
-      if (playerGesture === computerGesture) {
+      if (currentGesture === computerGesture) {
         gameResult = "平手！";
       } else if (
-        (playerGesture === "石頭" && computerGesture === "剪刀") ||
-        (playerGesture === "剪刀" && computerGesture === "布") ||
-        (playerGesture === "布" && computerGesture === "石頭")
+        (currentGesture === "石頭" && computerGesture === "剪刀") ||
+        (currentGesture === "剪刀" && computerGesture === "布") ||
+        (currentGesture === "布" && computerGesture === "石頭")
       ) {
         gameResult = "你贏了！🎉";
         playerScore++;
@@ -163,9 +212,10 @@ function playGame() {
         computerScore++;
       }
     } else {
-      gameResult = "請對著鏡頭比出 剪刀、石頭 或 布";
+      gameResult = "維持手勢...";
     }
-    lastPlayTime = millis();
+  } else {
+    gameResult = "請對著鏡頭比出 剪刀、石頭 或 布";
   }
 }
 
@@ -186,20 +236,33 @@ function drawGameUI() {
     textSize(32);
     fill(255, 255, 0);
     text(gameResult, 40, 130);
+
+    // 畫面倒數
+    if (currentGesture === "OK") {
+      let countdown = Math.ceil(3 - (millis() - gestureStartTime) / 1000);
+      if (countdown > 0 && countdown <= 3) {
+        fill(255, 150);
+        textAlign(CENTER, CENTER);
+        textSize(150);
+        text(countdown, windowWidth / 2, windowHeight / 2);
+      }
+    }
   } else {
-    text(`電腦手勢: ${computerGesture}`, 40, 80);
+    text(`電腦手勢: ${gameState === "RESULT" ? computerGesture : "等待出拳..."}`, 40, 80);
     
     textSize(32);
     fill(255, 255, 0);
     text(`結果: ${gameResult}`, 40, 130);
   
-    // 畫面中央顯示 3 秒倒數計時
-    let countdown = Math.ceil(3 - (millis() - lastPlayTime) / 1000);
-    if (countdown > 0 && countdown <= 3) {
-      fill(255, 150);
-      textAlign(CENTER, CENTER);
-      textSize(150);
-      text(countdown, windowWidth / 2, windowHeight / 2);
+    // 畫面中央顯示倒數計時
+    if (gameState === "PLAYING" && (currentGesture === "石頭" || currentGesture === "剪刀" || currentGesture === "布")) {
+      let countdown = Math.ceil(3 - (millis() - gestureStartTime) / 1000);
+      if (countdown > 0 && countdown <= 3) {
+        fill(255, 150);
+        textAlign(CENTER, CENTER);
+        textSize(150);
+        text(countdown, windowWidth / 2, windowHeight / 2);
+      }
     }
   }
 
