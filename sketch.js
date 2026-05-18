@@ -7,6 +7,9 @@ let computerGesture = "等待中";
 let gameResult = "模型載入中...";
 let gestures = ["石頭", "布", "剪刀"];
 let lastPlayTime = 0;
+let gameState = "WAITING"; // 狀態：WAITING (等待開始), PLAYING (遊戲進行中)
+let playerScore = 0; // 玩家得分
+let computerScore = 0; // 電腦得分
 
 function setup() {
   // 建立全螢幕畫布
@@ -30,7 +33,7 @@ function setup() {
   // 初始化 ml5.js Handpose 模型
   handpose = ml5.handpose(capture, () => {
     console.log("Handpose 模型載入成功！");
-    gameResult = "請伸出手勢";
+    gameResult = "請比出 OK 手勢開始";
   });
   handpose.on("predict", results => { predictions = results; });
 
@@ -63,7 +66,12 @@ function draw() {
     
     // 繪製手部節點與遊戲邏輯
     drawKeypoints(imgWidth, imgHeight);
-    playGame();
+    
+    if (gameState === "WAITING") {
+      checkStartGame();
+    } else {
+      playGame();
+    }
     drawGameUI();
   }
 }
@@ -113,10 +121,26 @@ function detectGesture(prediction) {
     }
   }
 
+  // 判斷 OK 手勢：大拇指(節點4)和食指(節點8)指尖距離小於 50，且另外幾指有伸直
+  let thumbTip = prediction.landmarks[4];
+  let indexTip = prediction.landmarks[8];
+  let d = dist(thumbTip[0], thumbTip[1], indexTip[0], indexTip[1]);
+  if (d < 50 && extendedFingers >= 2) {
+    return "OK";
+  }
+
   if (extendedFingers === 0) return "石頭";
   if (extendedFingers === 2) return "剪刀"; // 通常是食指和中指伸直
   if (extendedFingers >= 3) return "布";    // 3 根或 4 根都當作布
   return "未知";
+}
+
+function checkStartGame() {
+  if (playerGesture === "OK") {
+    gameState = "PLAYING";
+    lastPlayTime = millis();
+    gameResult = "遊戲開始！";
+  }
 }
 
 function playGame() {
@@ -133,11 +157,13 @@ function playGame() {
         (playerGesture === "布" && computerGesture === "石頭")
       ) {
         gameResult = "你贏了！🎉";
+        playerScore++;
       } else {
         gameResult = "電腦贏了！💀";
+        computerScore++;
       }
     } else {
-      gameResult = "請對著鏡頭比出手勢";
+      gameResult = "請對著鏡頭比出 剪刀、石頭 或 布";
     }
     lastPlayTime = millis();
   }
@@ -147,25 +173,39 @@ function drawGameUI() {
   // 繪製半透明的資訊面板
   rectMode(CORNER);
   fill(0, 150);
-  rect(20, 20, 300, 180, 10);
+  rect(20, 20, 350, 230, 10); // 加大面板的高度與寬度以容納計分板
   
   // 繪製文字狀態
   fill(255);
   textAlign(LEFT, TOP);
   textSize(24);
   text(`你的手勢: ${playerGesture}`, 40, 40);
-  text(`電腦手勢: ${computerGesture}`, 40, 80);
   
-  textSize(32);
-  fill(255, 255, 0);
-  text(`結果: ${gameResult}`, 40, 130);
+  if (gameState === "WAITING") {
+    text(`狀態: 等待開始`, 40, 80);
+    textSize(32);
+    fill(255, 255, 0);
+    text(gameResult, 40, 130);
+  } else {
+    text(`電腦手勢: ${computerGesture}`, 40, 80);
+    
+    textSize(32);
+    fill(255, 255, 0);
+    text(`結果: ${gameResult}`, 40, 130);
   
-  // 畫面中央顯示 3 秒倒數計時
-  let countdown = Math.ceil(3 - (millis() - lastPlayTime) / 1000);
-  if (countdown > 0 && countdown <= 3) {
-    fill(255, 150);
-    textAlign(CENTER, CENTER);
-    textSize(150);
-    text(countdown, windowWidth / 2, windowHeight / 2);
+    // 畫面中央顯示 3 秒倒數計時
+    let countdown = Math.ceil(3 - (millis() - lastPlayTime) / 1000);
+    if (countdown > 0 && countdown <= 3) {
+      fill(255, 150);
+      textAlign(CENTER, CENTER);
+      textSize(150);
+      text(countdown, windowWidth / 2, windowHeight / 2);
+    }
   }
+
+  // 顯示計分板
+  textAlign(LEFT, TOP);
+  textSize(24);
+  fill(255);
+  text(`得分 - 玩家: ${playerScore} / 電腦: ${computerScore}`, 40, 180);
 }
