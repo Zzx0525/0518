@@ -10,6 +10,7 @@ let lastPlayTime = 0;
 let gameState = "WAITING"; // 狀態：WAITING (等待開始), PLAYING (遊戲進行中), RESULT (顯示結果)
 let playerScore = 0; // 玩家得分
 let computerScore = 0; // 電腦得分
+let tieScore = 0; // 平手次數
 let currentGesture = ""; // 紀錄當前手勢，用來判斷是否維持
 let gestureStartTime = 0; // 紀錄當前手勢開始維持的時間
 
@@ -80,11 +81,13 @@ function draw() {
     } else if (gameState === "PLAYING") {
       playGame();
     } else if (gameState === "RESULT") {
-      // 顯示結果 2 秒後重置為 PLAYING 狀態
-      if (millis() - lastPlayTime > 2000) {
-        gameState = "PLAYING";
-        gameResult = "請對著鏡頭比出 剪刀、石頭 或 布";
-        gestureStartTime = millis();
+      // 顯示結果，並等待使用者比出「七」手勢維持 2 秒後開始下一輪
+      if (currentGesture === "七") {
+        if (millis() - gestureStartTime > 2000) {
+          gameState = "PLAYING";
+          gameResult = "請對著鏡頭比出 剪刀、石頭 或 布";
+          gestureStartTime = millis();
+        }
       }
     }
     drawGameUI();
@@ -170,6 +173,11 @@ function detectGesture(prediction) {
     return "OK";
   }
 
+  // 判斷 七 手勢：只有食指伸直 (extendedFingers === 1) 且大拇指沒有捏在一起
+  if (extendedFingers === 1 && d > 50) {
+    return "七";
+  }
+
   if (extendedFingers === 0) return "石頭";
   if (extendedFingers === 2) return "剪刀"; // 通常是食指和中指伸直
   if (extendedFingers >= 3) return "布";    // 3 根或 4 根都當作布
@@ -200,6 +208,7 @@ function playGame() {
       
       if (currentGesture === computerGesture) {
         gameResult = "平手！";
+        tieScore++;
       } else if (
         (currentGesture === "石頭" && computerGesture === "剪刀") ||
         (currentGesture === "剪刀" && computerGesture === "布") ||
@@ -223,7 +232,7 @@ function drawGameUI() {
   // 繪製半透明的資訊面板
   rectMode(CORNER);
   fill(0, 150);
-  rect(20, 20, 350, 230, 10); // 加大面板的高度與寬度以容納計分板
+  rect(20, 20, 350, 180, 10); // 左側狀態面板
   
   // 繪製文字狀態
   fill(255);
@@ -263,12 +272,37 @@ function drawGameUI() {
         textSize(150);
         text(countdown, windowWidth / 2, windowHeight / 2);
       }
+    } else if (gameState === "RESULT") {
+      // 提示使用者比出「七」以繼續
+      fill(255, 255, 0);
+      textAlign(CENTER, CENTER);
+      if (currentGesture === "七") {
+        let countdown = Math.ceil(2 - (millis() - gestureStartTime) / 1000);
+        if (countdown > 0 && countdown <= 2) {
+          textSize(150);
+          text(countdown, windowWidth / 2, windowHeight / 2);
+        }
+      } else {
+        textSize(48);
+        text("請比出「七」手勢開始下一輪", windowWidth / 2, windowHeight / 2 + 100);
+      }
     }
   }
 
-  // 顯示計分板
+  // 繪製右側統計面板
+  fill(0, 150);
+  rect(windowWidth - 240, 20, 220, 170, 10);
+  
   textAlign(LEFT, TOP);
-  textSize(24);
   fill(255);
-  text(`得分 - 玩家: ${playerScore} / 電腦: ${computerScore}`, 40, 180);
+  textSize(24);
+  text("戰績統計", windowWidth - 220, 35);
+  
+  textSize(20);
+  fill(100, 255, 100); // 綠色
+  text(`玩家獲勝: ${playerScore} 次`, windowWidth - 220, 75);
+  fill(255, 100, 100); // 紅色
+  text(`電腦獲勝: ${computerScore} 次`, windowWidth - 220, 105);
+  fill(200, 200, 200); // 灰色
+  text(`平手次數: ${tieScore} 次`, windowWidth - 220, 135);
 }
